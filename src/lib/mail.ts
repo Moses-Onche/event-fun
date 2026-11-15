@@ -34,6 +34,27 @@ function eventUrl(id: string) {
   return `${base}/events/${id}`;
 }
 
+function siteUrl(path: string) {
+  const base = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return `${base}${path}`;
+}
+
+export async function sendVerificationEmail(to: string, name: string | null, token: string) {
+  await send({
+    to,
+    subject: `Confirm your email for ${SITE_NAME}`,
+    text: `Hi ${name ?? "there"},\n\nPlease confirm your email address to finish setting up your ${SITE_NAME} account:\n\n${siteUrl(`/verify-email?token=${token}`)}\n\nThis link expires in 24 hours. If you didn't create an account, you can ignore this email.\n\n${SITE_NAME}`,
+  });
+}
+
+export async function sendPasswordResetEmail(to: string, name: string | null, token: string) {
+  await send({
+    to,
+    subject: `Reset your ${SITE_NAME} password`,
+    text: `Hi ${name ?? "there"},\n\nWe received a request to reset your ${SITE_NAME} password. Choose a new one here:\n\n${siteUrl(`/reset-password?token=${token}`)}\n\nThis link expires in 1 hour and can be used once. If you didn't ask for this, you can ignore this email and your password will stay the same.\n\n${SITE_NAME}`,
+  });
+}
+
 export async function sendRegistrationEmail(
   to: string,
   name: string | null,

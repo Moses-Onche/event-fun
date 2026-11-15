@@ -7,6 +7,8 @@ EventFun is a web app for discovering, hosting and registering for events.
 ## Features
 
 - **Sign up / sign in** with email and password, plus optional Google sign-in
+- **Email verification**: new password accounts must confirm their email before they can sign in (links expire after 24 hours, and can be re-sent)
+- **Password reset** by email (links are single-use and expire after 1 hour); resetting signs the account out everywhere else
 - **Three roles**
   - **Attendee**: browse events, register, cancel, join waitlists
   - **Organizer**: create, edit and delete their own events; see attendees and waitlists
@@ -46,6 +48,19 @@ Open http://localhost:3000.
 
 For Google sign-in, add `http://localhost:3000/api/auth/callback/google` (and your production equivalent) as an authorized redirect URI.
 
+### Upgrading an existing database
+
+The email verification and password reset update adds a table and a column. Run the migration, then re-run the seed so the admin account counts as verified:
+
+```bash
+npx prisma migrate dev --name email-verification   # production: npx prisma migrate deploy
+npm run db:seed
+```
+
+Accounts created before this update have no verified email, so those people will see a "confirm your email" message when they sign in. They can use **Send a new link** on that message (or `/resend-verification`) to confirm, or use **Forgot password?**, which also confirms the email. Google accounts are already treated as verified.
+
+Without `SMTP_HOST`, verification and reset links are printed in the server console, which is handy for local development.
+
 ## Deploying to Vercel
 
 1. Create a hosted PostgreSQL database (Neon, Supabase, Vercel Postgres, etc.).
@@ -56,8 +71,9 @@ For Google sign-in, add `http://localhost:3000/api/auth/callback/google` (and yo
 
 - **Payments are not enabled.** Prices are stored and displayed (`priceCents`, `currency`), but registration never charges anyone. Stripe can be added in `src/app/actions/registrations.ts`.
 - **Roles are separate.** Only attendee accounts can register; organizer and admin accounts cannot. Attendees can upgrade themselves to organizer from the dashboard. Admins are created only via the seed script or by another admin.
-- **Google accounts are not auto-linked** to existing email/password accounts, because password-signup emails are unverified and linking would allow account pre-hijacking. Someone who signed up with a password uses that to sign in. Adding email verification would allow safe linking.
-- **No email verification or password reset yet.**
+- **Google accounts link to existing accounts by email**, but only when Google reports the email as verified. If a password account for that email was never verified, its password is removed and its sessions end, so someone who pre-registered another person's email can't keep access.
+- **Verification and reset are rate-limited per account**: at most one email of each kind per minute. There is no per-IP rate limiting yet, so put the site behind a CDN or WAF rate limit for production.
+- **Resetting a password signs out other sessions**, but changing it from inside the app is not built yet.
 - **Cover images are URLs**, not uploads.
 - Times are entered in the organizer's local timezone and shown in each viewer's local timezone. Emails show times in UTC.
 - The code was written without running a build in the authoring environment, so expect to fix small type or lint issues on the first `npm run build`.

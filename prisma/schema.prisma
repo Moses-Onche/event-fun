@@ -29,6 +29,11 @@ enum RegistrationStatus {
   CANCELLED
 }
 
+enum AuthTokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
 model User {
   id            String         @id @default(cuid())
   name          String?
@@ -36,6 +41,8 @@ model User {
   emailVerified DateTime?
   image         String?
   passwordHash  String?
+  // Sessions issued before this moment are rejected (set on password reset).
+  passwordChangedAt DateTime?
   role          Role           @default(ATTENDEE)
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
@@ -43,6 +50,21 @@ model User {
   sessions      Session[]
   events        Event[]
   registrations Registration[]
+  authTokens    AuthToken[]
+}
+
+/// Single-use email verification and password reset tokens.
+/// Only a SHA-256 hash is stored, so a database leak does not expose usable links.
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
 }
 
 model Account {

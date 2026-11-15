@@ -9,7 +9,12 @@ export const metadata = { title: "Sign in" };
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: { registered?: string; callbackUrl?: string };
+  searchParams: {
+    registered?: string;
+    verified?: string;
+    reset?: string;
+    callbackUrl?: string;
+  };
 }) {
   if (await getCurrentUser()) redirect("/dashboard");
 
@@ -17,13 +22,21 @@ export default async function SignInPage({
   const cb = searchParams.callbackUrl;
   const callbackUrl = cb && cb.startsWith("/") && !cb.startsWith("//") ? cb : "/dashboard";
 
+  const notice = searchParams.registered
+    ? "Account created. We've emailed you a confirmation link. Confirm your email, then sign in."
+    : searchParams.verified
+      ? "Email confirmed. You can sign in now."
+      : searchParams.reset
+        ? "Password updated. Sign in with your new password."
+        : null;
+
   return (
     <div className="mx-auto max-w-md">
       <div className="card p-6">
         <h1 className="text-2xl font-extrabold">Welcome back</h1>
-        {searchParams.registered && (
-          <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-            Account created. Sign in to continue.
+        {notice && (
+          <p role="status" className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+            {notice}
           </p>
         )}
         <SignInForm googleEnabled={googleEnabled} callbackUrl={callbackUrl} />

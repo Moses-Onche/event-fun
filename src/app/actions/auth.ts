@@ -6,8 +6,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { signUpSchema } from "@/lib/validators";
 import { requireUser } from "@/lib/session";
+import { issueToken } from "@/lib/tokens";
+import { sendVerificationEmail } from "@/lib/mail";
 
-export type FormState = { error?: string } | undefined;
+export type FormState = { error?: string; success?: string } | undefined;
 
 export async function signUp(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = signUpSchema.safeParse({
@@ -28,7 +30,11 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.user.create({ data: { name, email, passwordHash, role } });
+  const user = await prisma.user.create({ data: { name, email, passwordHash, role } });
+
+  // If the email can't be delivered right now, the person can request another from /resend-verification.
+  const token = await issueToken(user.id, "EMAIL_VERIFY");
+  if (token) await sendVerificationEmail(user.email, user.name, token);
 
   redirect("/signin?registered=1");
 }

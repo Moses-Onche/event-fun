@@ -32,6 +32,10 @@ export const authOptions: NextAuthOptions = {
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
 
+        // Checked only after the password is correct, so this message can't be used
+        // to discover which emails have accounts.
+        if (!user.emailVerified) throw new Error("EMAIL_NOT_VERIFIED");
+
         return { id: user.id, name: user.name, email: user.email, image: user.image };
       },
     }),
@@ -40,35 +44,66 @@ export const authOptions: NextAuthOptions = {
           GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID!,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-            // Deliberately NOT linking Google to existing email/password accounts:
-            // emails from password signup are unverified, so auto-linking would let
-            // someone pre-register a victim's email and keep access after they sign in.
+            // Linking by email is safe here because the signIn callback below only lets
+            // Google through when Google says the email is verified, and it strips the
+            // password from any account whose email was never verified (see there).
+            allowDangerousEmailAccountLinking: true,
           }),
         ]
       : []),
   ],
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account, profile }) {
+      if (!user.email) return true;
+      const email = user.email.toLowerCase();
+
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, isActive: true, emailVerified: true, passwordHash: true },
+      });
       // Block suspended users from signing in with Google too.
-      if (user.email) {
-        const existing = await prisma.user.findUnique({
-          where: { email: user.email.toLowerCase() },
-          select: { isActive: true },
-        });
-        if (existing && !existing.isActive) return false;
+      if (existing && !existing.isActive) return false;
+
+      if (account?.provider === "google") {
+        // Only trust Google's email when Google itself says it is verified.
+        const googleProfile = profile as unknown as { email_verified?: boolean } | undefined;
+        if (!googleProfile?.email_verified) return false;
+
+        // This runs before the account is linked. If a password account exists for this
+        // email but its owner never proved the email, someone else may have registered
+        // it first. The real owner just proved it via Google, so drop the unproven
+        // password and force every old session to end.
+        if (existing && !existing.emailVerified) {
+          await prisma.user.update({
+            where: { id: existing.id },
+            data: {
+              emailVerified: new Date(),
+              passwordHash: null,
+              passwordChangedAt: new Date(),
+            },
+          });
+        }
       }
       return true;
     },
     async jwt({ token, user }) {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        token.authAt = Date.now();
+      }
       if (token.id) {
         // Refresh role/active flag so admin changes take effect quickly.
         const db = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { role: true, isActive: true },
+          select: { role: true, isActive: true, passwordChangedAt: true },
         });
         token.role = db?.role ?? "ATTENDEE";
         token.active = db?.isActive ?? false;
+
+        // A password reset signs out every session that began before it.
+        if (db?.passwordChangedAt && (token.authAt ?? 0) < db.passwordChangedAt.getTime()) {
+          token.active = false;
+        }
       }
       return token;
     },
