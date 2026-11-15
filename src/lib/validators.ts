@@ -1,15 +1,30 @@
 import { z } from "zod";
 import { CATEGORIES } from "./constants";
 
+export const emailSchema = z.string().trim().toLowerCase().email("Enter a valid email address.");
+
+// bcrypt only uses the first 72 bytes, so longer passwords are rejected rather than silently truncated.
+export const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters.")
+  .max(72, "Password must be at most 72 characters.");
+
 export const signUpSchema = z.object({
   name: z.string().trim().min(2, "Please enter your name.").max(80),
-  email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters.")
-    .max(72, "Password must be at most 72 characters."),
+  email: emailSchema,
+  password: passwordSchema,
   role: z.enum(["ATTENDEE", "ORGANIZER"]),
 });
+
+export const resetPasswordSchema = z
+  .object({
+    password: passwordSchema,
+    confirm: z.string(),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: "Passwords do not match.",
+    path: ["confirm"],
+  });
 
 const optionalText = z
   .string()

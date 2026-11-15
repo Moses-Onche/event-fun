@@ -21,5 +21,7 @@ declare module "next-auth/jwt" {
     id?: string;
     role?: AppRole;
     active?: boolean;
+    /** When this login happened (ms). Compared with User.passwordChangedAt. */
+    authAt?: number;
   }
 }
